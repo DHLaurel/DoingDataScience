@@ -7,24 +7,151 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(global.par = TRUE)
+
+library(tidyverse) # merge
+library(ggplot2)
+library(ggpmisc)
+library(ggthemes)
+library(mice) # multi-variate imputation
+library(class) # knn
+library(caret) # confusion matrix
+
+set.seed(13)
+
+breweries_file = file.choose()
+beer_file = file.choose()
+brew_dat = read.csv(breweries_file)
+beer_dat = read.csv(beer_file)
+
+beer_brews = merge(x = brew_dat, y = beer_dat, by.x = "Brew_ID", by.y = "Brewery_id")
+colnames(beer_brews)[colnames(beer_brews) == "Name.x"] <- "Brew_Name"
+colnames(beer_brews)[colnames(beer_brews) == "Name.y"] <- "Beer_Name"
+
+beer_brews$State <- trimws(beer_brews$State) # States have extra whitespace, unnecessary
+
 ```
 
-## R Markdown
+
+## Introduction
 
 This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
 
 When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
-```{r cars}
-summary(cars)
+## Missing Values
+Several values were missing for both the ABV and IBU columns. We needed to make sure that we were approaching these missing values in the correct way. First we determined that these were Missing-At-Random. Then we determined that the proportion of missing rows to total was somewhat significant at 41.7%. Unfortunately, this high number means some of our predictions using IBU may be slightly skewed towards the mean.
+
+At this point, to deal with the missing values, we used an algorithm known as multivariate imputation by chaining predictive means equations. This method works by predicting missing values using the average value and basing this on surrounding factors that are known (e.g. predicting missing ABV using IBU):
+```{r missing_pre}
+summary(beer_brews[,c("ABV", "IBU")])
+(nrow(beer_brews[!complete.cases(beer_brews),]) / nrow(beer_brews)) * 100.0 # percentage of rows that are missing from the data
+cor(beer_brews$ABV, beer_brews$IBU, use = "complete.obs") # 0.67 correlation between ABV and IBU, good predictor for multi-imputation, "mice"
 ```
 
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r missing_calcs, include=FALSE}
+beer_brew_whole <- beer_brews
+beer_brew_whole$ABV <- complete(mice(beer_brew_whole, method="pmm"))$ABV # Use predictive mean imputation for now, fill in just ABV rows (fewer) before IBU
+beer_brew_whole$IBU <- complete(mice(beer_brew_whole, method="pmm"))$IBU 
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r missing_post}
+summary(beer_brew_whole[,c("ABV", "IBU")])
+```
+
+
+## Highest ABV & IBU Beers
+### ABV
+We could pick the states which produce beers with the greatest ABV and IBU, respectively, but it might be more interesting to determine trends of states that are producing these high-scoring beers. To make sure we were only picking beers with true ABV/IBU numbers, we used the original data set without missing values imputed. From these results, we found the states that tended to produce higher ABV beers were Colorado, Kentucky, Indiana, New York, and Michigan.
+
+From the plot below, the data appears to indicate that while Colorado produces the single highest-ABV beer, "Lee Hill Series Vol. 5 - Belgian Style Quadrupel Ale," it is outpaced by Kentucky in concentration of high-ABV beers produced:
+```{r high_abv_pre, include=FALSE}
+beer_brew_abv = beer_brews
+beer_brew_abv = beer_brew_abv[!(is.na(beer_brew_abv$ABV)),]
+```
+
+```{r high_abv_states}
+beer_brew_abv[order(beer_brew_abv$ABV, decreasing = TRUE )[1:6],c("Beer_Name",  "State", "ABV")] 
+hi_abv = beer_brew_abv[beer_brew_abv$State %in% c("CO", "MI", "KY", "IN", "NY"),]
+par(mar=c(10,10,0,0)) #it's important to have that in a separate chunk
+
+ggplot(data = hi_abv, aes(x = ABV * 100, fill = State, linetype = (State != "CO"), color = (State != "CO"))) +
+  geom_density(alpha = 0.3, position="identity") +
+    labs(x = "Alcohol By Volume (%)", y = "Density", title="Density of High-ABV \nBeers by State") +
+  guides(color = "none", linetype = "none") +
+  theme_wsj()+
+  theme(axis.title=element_text(size=12))
+```
+
+
+### IBU
+We see a similar trend happen when we discuss IBU for these beers as well. The aptly named, "Bitter Bitch 
+```{r high_ibu_pre, include=FALSE}
+beer_brew_ibu = beer_brews
+beer_brew_ibu = beer_brew_ibu[!(is.na(beer_brew_ibu$IBU)),]
+```
+
+```{r high_ibu_states, echo=FALSE}
+beer_brew_ibu[order(beer_brew_ibu$IBU, decreasing = TRUE )[1:6], c("Beer_Name",  "State", "IBU")]
+
+hi_ibu = beer_brew_ibu[beer_brew_ibu$State %in% c("OR", "VA", "MA", "OH", "MN"),]
+
+ggplot(data = hi_ibu, aes(x = IBU, fill = State, linetype = (State != "OR"), color = (State != "OR"))) +
+  geom_density(alpha = 0.3, position="identity") +
+  labs(x = "International Bitterness Units (IBU)", y = "Density", title="Density of High-IBU \nBeers by State") +
+  guides(color = "none", linetype = "none") +
+  theme_wsj()+
+  theme(axis.title=element_text(size=12))
+
+```
+
+
+## Testing the Correlation Between IBU and ABV
+As hinted to earlier, during the missing value imputation for ABV and IBU, we noticed that the two columns seemed to be adequate predictors for one another. The data indicates there is a strong positive correlation between ABV and IBU at an r-value of 0.652 (r-values range between -1.0 and 1.0):
+```{r ibu_abv_corr, echo=FALSE}
+summary(beer_brews[,c("ABV", "IBU")])
+cor(beer_brew_whole$ABV, beer_brew_whole$IBU) # 0.65236, down from before values were imputed
+
+ggplot(beer_brew_whole, aes(x = ABV * 100.0, y = IBU)) +
+  geom_point(position = "jitter") +
+  geom_smooth(method='lm') +
+  labs(x = "ABV (%)", y = "IBU", title = "IBU vs. ABV in \nAmerican Beers", subtitle = "Correlation = 0.652" ) +
+  theme_wsj()   +
+  theme(axis.title=element_text(size=12))
+```
+
+
+## IPAs vs. Ales:
+### Using K-Nearest Neighbors to Predict IPAs and Ales from IBU/ABV
+It was wondered whether there was a strong predictive factor that we could use to test the hypothesis that IPAs tend to be more bitter and have a higher alcohol content than other types of ales. In order to perform this analysis, we first filtered out all non-ales from the data set, then we used a predictive machine learning algorithm known as K-nearest neighbors, which clumps beers together based on IBU and ABV, and uses these clusters to predict whether a test beer is likely an IPA or another type of ale. 
+
+From the model we built using the K-nearest neighbors approach, we were able to predict with 79.6% accuracy whether a given ale was an IPA or not.
+```{r knn_pre, include=FALSE}
+bb_ales <- beer_brew_whole[grepl("Ale", beer_brew_whole$Style, ignore.case = TRUE) | grepl("IPA", beer_brew_whole$Style, ignore.case=TRUE), ]
+bb_ales <- bb_ales[!grepl("Lager", bb_ales$Style, ignore.case=TRUE),]
+
+bb_ales$IsIPA <- grepl("IPA", bb_ales$Style, ignore.case=TRUE)
+set.seed(13)
+
+k_index = sample(seq(1:nrow(bb_ales)),round(0.7*nrow(bb_ales)))
+bb_train = bb_ales[k_index,]
+bb_test = bb_ales[-k_index,]
+ k = 7# pick_k(bb_train, bb_test, c("IBU", "ABV"), "IsIPA", nrow(bb_test)) # __7__
+cl <- bb_train[,"IsIPA"]
+truth <- as.factor(bb_test$IsIPA)
+
+pred = knn(bb_train[,c("IBU", "ABV")], bb_test[,c("IBU", "ABV")], cl, k)
+bb_ales$IsIPA[bb_ales$IsIPA == TRUE] <- "IPA" 
+bb_ales$IsIPA[bb_ales$IsIPA == FALSE] <- "Not an IPA" 
+```
+
+```{r knn, echo=FALSE}
+ggplot(bb_ales, aes(x = IBU, y = ABV * 100.0, color = IsIPA)) +
+  geom_point(position = "jitter", alpha = 0.7) +
+  labs(title = "IPA prediction by \nABV and IBU", color = "", y = "ABV (%)") +
+  theme_wsj()   +
+  theme(axis.title=element_text(size=12)) +
+  xlim(0, 150) + ylim(2,10)
+
+confusionMatrix(pred, truth)
+```
