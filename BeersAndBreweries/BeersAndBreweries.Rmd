@@ -85,7 +85,7 @@ ggplot(data = hi_abv, aes(x = ABV * 100, fill = State, linetype = (State != "CO"
 
 
 ### IBU
-We see a similar trend happen when we discuss IBU for these beers as well. The aptly named, "Bitter Bitch 
+We see a similar trend happen when we discuss IBU for these beers as well. The aptly named, "Bitter Bitch Imperial IPA" brings Oregon to the top of the list, despite appearing to have fewer beers at the high end of the IBU distribution.
 ```{r high_ibu_pre, include=FALSE}
 beer_brew_ibu = beer_brews
 beer_brew_ibu = beer_brew_ibu[!(is.na(beer_brew_ibu$IBU)),]
@@ -148,7 +148,7 @@ bb_ales$IsIPA[bb_ales$IsIPA == FALSE] <- "Not an IPA"
 ```{r knn, echo=FALSE}
 ggplot(bb_ales, aes(x = IBU, y = ABV * 100.0, color = IsIPA)) +
   geom_point(position = "jitter", alpha = 0.7) +
-  labs(title = "IPA prediction by \nABV and IBU", color = "", y = "ABV (%)") +
+  labs(title = "IPA Prediction by \nABV and IBU", color = "", y = "ABV (%)") +
   theme_wsj()   +
   theme(axis.title=element_text(size=12)) +
   xlim(0, 150) + ylim(2,10)
