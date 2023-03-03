@@ -8,6 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_knit$set(global.par = TRUE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
 
 library(tidyverse) # merge
 library(ggplot2)
@@ -16,11 +17,13 @@ library(ggthemes)
 library(mice) # multi-variate imputation
 library(class) # knn
 library(caret) # confusion matrix
+library(scales)
 
 set.seed(13)
 
 breweries_file = file.choose()
 beer_file = file.choose()
+final = read.csv(file.choose(), header = TRUE) #DUI_Beer_Data.csv file
 brew_dat = read.csv(breweries_file)
 beer_dat = read.csv(beer_file)
 
@@ -32,17 +35,64 @@ beer_brews$State <- trimws(beer_brews$State) # States have extra whitespace, unn
 
 ```
 
-
 ## Introduction
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+Dear CEO and CFO of Budweiser,
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+We are pleased to present the results of our analysis of the data you provided. Our objective was to gain a deeper understanding of the relationship between alcohol by volume (ABV) and various other factors, such as the number of breweries in each state, the bitterness of beer, and the correlation between bitterness and alcohol content.
+
+In conducting our analysis, we utilized various statistical tools and techniques, including scatter plots, bar charts, and KNN classifiers. Our findings have uncovered several interesting insights that we believe will be of great value to Budweiser.
+
+Please find below a summary of our key findings. If you have any questions or comments, we would be happy to discuss them further. Our aim is to provide you with results that are clear, concise, and actionable.
+
+## Breweries by State
+
+The data set contained 558 breweries across the United States, with the top five states accounting for 31% of the total (175 breweries). The states were ranked in order of largest to smallest, with Colorado being the largest with 8.42% of the total, followed by California (6.99% of the total), Michigan (5.73% of the total), Oregon (5.20% of the total), and Texas (5.02% of the total):
+
+```{r breweries_by_state, include=FALSE}
+# Load your data
+breweries_file = read.csv(breweries_file, header = TRUE)
+NROW(breweries_file)
+
+#Group the data by State and count each one
+df_state = breweries_file %>% group_by(State) %>% summarise(count = n())
+df_state
+
+# Create a reference table to map state abbreviations to state names
+state_ref = data.frame(state = state.abb, name = state.name, stringsAsFactors = FALSE)
+
+#Changed the case of state_ref
+state_ref$State=state_ref$state
+state_ref$state = NULL
+
+#Remove the extra spaces in the state column
+df_state$State = trimws(df_state$State)
+
+# Merge your data with the reference table
+merged_df = left_join(df_state, state_ref, by = c("State" = "State"))
+merged_df[merged_df$State == "DC", "name"] <- "District of Columbia"
+merged_df
+```
+
+```{r plot_breweries_by_state, echo=FALSE}
+#Map the breweries_file per state - WSJ Theme
+#Map the breweries_file per state - WSJ Theme
+ggplot(merged_df, aes(x = factor(name, levels = sort(unique(name))), y = count)) + 
+  geom_bar(stat = "identity") +
+  labs(x = "State", y = "Count", title = "Breweries by State") +
+  scale_y_continuous(labels = scales::comma) +
+  theme_wsj() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        plot.title = element_text(hjust = 0.5))
+
+```
 
 ## Missing Values
+
 Several values were missing for both the ABV and IBU columns. We needed to make sure that we were approaching these missing values in the correct way. First we determined that these were Missing-At-Random. Then we determined that the proportion of missing rows to total was somewhat significant at 41.7%. Unfortunately, this high number means some of our predictions using IBU may be slightly skewed towards the mean.
 
 At this point, to deal with the missing values, we used an algorithm known as multivariate imputation by chaining predictive means equations. This method works by predicting missing values using the average value and basing this on surrounding factors that are known (e.g. predicting missing ABV using IBU):
+
 ```{r missing_pre}
 summary(beer_brews[,c("ABV", "IBU")])
 (nrow(beer_brews[!complete.cases(beer_brews),]) / nrow(beer_brews)) * 100.0 # percentage of rows that are missing from the data
@@ -59,12 +109,35 @@ beer_brew_whole$IBU <- complete(mice(beer_brew_whole, method="pmm"))$IBU
 summary(beer_brew_whole[,c("ABV", "IBU")])
 ```
 
+## Median ABV and IBU by State
+
+This chart presents a summary of the median Alcohol by Volume (ABV) and International Bitterness Unit (IBU) values of beers produced in different states across the United States. To compile the information, the Beer and Breweries datasets were merged and the median values of ABV and IBU were calculated for each state of production. The states with the highest median IBU values are Montana (80 IBU), Delaware (77.5 IBU), and Vermont (75 IBU). The states with the highest median ABV values are Nevada (0.085), South Carolina (0.0765), Vermont (0.0715), and Kansas (0.0715).
+
+```{r chart_abv_IBU, echo=FALSE}
+#Create a bar chart to compare the above results and put mean ABV on the chart
+ggplot(beer_brew_whole, aes(x = State, y = ABV, fill = IBU)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = State), vjust = 0, size = 3, angle = 0) +
+  labs(title = "Median ABV and IBU by State", x = "State", y = "Median ABV %") +
+  scale_fill_gradient(low = "green", high = "red") +
+  theme_wsj() +
+  theme(axis.text.x = element_text(size = 12, color = "black", angle = 90, hjust = 1),
+        axis.ticks.x = element_blank(),
+        plot.margin = unit(c(1, 1, 2, 1), "lines"),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12),
+        axis.text.y = element_text(angle = 90, hjust = 1))
+```
 
 ## Highest ABV & IBU Beers
+
 ### ABV
+
 We could pick the states which produce beers with the greatest ABV and IBU, respectively, but it might be more interesting to determine trends of states that are producing these high-scoring beers. To make sure we were only picking beers with true ABV/IBU numbers, we used the original data set without missing values imputed. From these results, we found the states that tended to produce higher ABV beers were Colorado, Kentucky, Indiana, New York, and Michigan.
 
 From the plot below, the data appears to indicate that while Colorado produces the single highest-ABV beer, "Lee Hill Series Vol. 5 - Belgian Style Quadrupel Ale," it is outpaced by Kentucky in concentration of high-ABV beers produced:
+
 ```{r high_abv_pre, include=FALSE}
 beer_brew_abv = beer_brews
 beer_brew_abv = beer_brew_abv[!(is.na(beer_brew_abv$ABV)),]
@@ -80,12 +153,51 @@ ggplot(data = hi_abv, aes(x = ABV * 100, fill = State, linetype = (State != "CO"
     labs(x = "Alcohol By Volume (%)", y = "Density", title="Density of High-ABV \nBeers by State") +
   guides(color = "none", linetype = "none") +
   theme_wsj()+
-  theme(axis.title=element_text(size=12))
+  theme(axis.title=element_text(size=12)) +
+  theme(plot.margin = unit(c(1, 1, 1, 1), "cm"),
+      # plot.background = element_rect(fill = "white"),
+      plot.title = element_text(hjust = 0.5),
+      axis.text = element_text(size = 10),
+      axis.title = element_text(size = 12),
+      axis.line = element_line(size = 0.5))
 ```
 
+### Alcohol By Volume
+
+In this analysis, the distribution of Alcohol by Volume (ABV) in 2,410 beers was examined. The histogram of the ABV revealed a right-skewed distribution, with the mean ABV of 5.97% and median of 5.60%.
+
+```{r abv_info}
+#Comment on the summary statistics and distribution of the ABV variable.
+summary(beer_dat$ABV)
+
+#Calculate mean value of ABV and IBU 
+mean_ABV= mean(beer_dat$ABV)
+mean_IBU = mean(beer_dat$IBU)
+
+```
+
+```{r abv_chart, echo=FALSE}
+#Put a chart together showing the Alcohol by Volume in Beer
+ggplot(beer_dat, aes(x = ABV * 100.0)) +
+  geom_histogram(fill = "blue", color = "black", binwidth = 0.2) +
+  geom_vline(xintercept = mean_ABV, color = "red", size = 1) +
+  geom_text(aes(x = mean_ABV, y = 200, label = "Mean ABV"), 
+            vjust = 1, hjust = -0.1, size = 4, color = "red", label.position = "right") +
+  labs(x = "Alcohol By Volume (%)", y = "Beer Count", title = "Alcohol by Volume \nin American Beers") +
+  theme_wsj() +
+  theme(plot.margin = unit(c(1, 1, 1, 1), "cm"),
+        # plot.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 12),
+        axis.line = element_line(size = 0.5))
+
+```
 
 ### IBU
+
 We see a similar trend happen when we discuss IBU for these beers as well. The aptly named, "Bitter Bitch Imperial IPA" brings Oregon to the top of the list, despite appearing to have fewer beers at the high end of the IBU distribution.
+
 ```{r high_ibu_pre, include=FALSE}
 beer_brew_ibu = beer_brews
 beer_brew_ibu = beer_brew_ibu[!(is.na(beer_brew_ibu$IBU)),]
@@ -101,13 +213,20 @@ ggplot(data = hi_ibu, aes(x = IBU, fill = State, linetype = (State != "OR"), col
   labs(x = "International Bitterness Units (IBU)", y = "Density", title="Density of High-IBU \nBeers by State") +
   guides(color = "none", linetype = "none") +
   theme_wsj()+
-  theme(axis.title=element_text(size=12))
+  theme(axis.title=element_text(size=12)) +
+  theme(plot.margin = unit(c(1, 1, 1, 1), "cm"),
+      # plot.background = element_rect(fill = "white"),
+      plot.title = element_text(hjust = 0.5),
+      axis.text = element_text(size = 10),
+      axis.title = element_text(size = 12),
+      axis.line = element_line(size = 0.5))
 
 ```
 
-
 ## Testing the Correlation Between IBU and ABV
+
 As hinted to earlier, during the missing value imputation for ABV and IBU, we noticed that the two columns seemed to be adequate predictors for one another. The data indicates there is a strong positive correlation between ABV and IBU at an r-value of 0.652 (r-values range between -1.0 and 1.0):
+
 ```{r ibu_abv_corr, echo=FALSE}
 summary(beer_brews[,c("ABV", "IBU")])
 cor(beer_brew_whole$ABV, beer_brew_whole$IBU) # 0.65236, down from before values were imputed
@@ -115,17 +234,26 @@ cor(beer_brew_whole$ABV, beer_brew_whole$IBU) # 0.65236, down from before values
 ggplot(beer_brew_whole, aes(x = ABV * 100.0, y = IBU)) +
   geom_point(position = "jitter") +
   geom_smooth(method='lm') +
-  labs(x = "ABV (%)", y = "IBU", title = "IBU vs. ABV in \nAmerican Beers", subtitle = "Correlation = 0.652" ) +
+  labs(x = "Alcohol By Volume (%)", y = "International Bitterness Units", title = "IBU vs. ABV in \nAmerican Beers", subtitle = "Correlation = 0.652" ) +
   theme_wsj()   +
-  theme(axis.title=element_text(size=12))
+  theme(axis.title=element_text(size=12)) +
+  theme(plot.margin = unit(c(1, 1, 1, 1), "cm"),
+      # plot.background = element_rect(fill = "white"),
+      plot.title = element_text(hjust = 0.5),
+      plot.subtitle = element_text(hjust = 0.5),
+      axis.text = element_text(size = 10),
+      axis.title = element_text(size = 12),
+      axis.line = element_line(size = 0.5))
 ```
 
-
 ## IPAs vs. Ales:
+
 ### Using K-Nearest Neighbors to Predict IPAs and Ales from IBU/ABV
-It was wondered whether there was a strong predictive factor that we could use to test the hypothesis that IPAs tend to be more bitter and have a higher alcohol content than other types of ales. In order to perform this analysis, we first filtered out all non-ales from the data set, then we used a predictive machine learning algorithm known as K-nearest neighbors, which clumps beers together based on IBU and ABV, and uses these clusters to predict whether a test beer is likely an IPA or another type of ale. 
+
+It was wondered whether there was a strong predictive factor that we could use to test the hypothesis that IPAs tend to be more bitter and have a higher alcohol content than other types of ales. In order to perform this analysis, we first filtered out all non-ales from the data set, then we used a predictive machine learning algorithm known as K-nearest neighbors, which clumps beers together based on IBU and ABV, and uses these clusters to predict whether a test beer is likely an IPA or another type of ale.
 
 From the model we built using the K-nearest neighbors approach, we were able to predict with 79.6% accuracy whether a given ale was an IPA or not.
+
 ```{r knn_pre, include=FALSE}
 bb_ales <- beer_brew_whole[grepl("Ale", beer_brew_whole$Style, ignore.case = TRUE) | grepl("IPA", beer_brew_whole$Style, ignore.case=TRUE), ]
 bb_ales <- bb_ales[!grepl("Lager", bb_ales$Style, ignore.case=TRUE),]
@@ -148,10 +276,69 @@ bb_ales$IsIPA[bb_ales$IsIPA == FALSE] <- "Not an IPA"
 ```{r knn, echo=FALSE}
 ggplot(bb_ales, aes(x = IBU, y = ABV * 100.0, color = IsIPA)) +
   geom_point(position = "jitter", alpha = 0.7) +
-  labs(title = "IPA Prediction by \nABV and IBU", color = "", y = "ABV (%)") +
+  labs(title = "IPA Prediction by \nABV and IBU", color = "", y = "Alcohol By Volume (%)", x="International Bitterness Units") +
   theme_wsj()   +
   theme(axis.title=element_text(size=12)) +
+  theme(plot.margin = unit(c(1, 1, 1, 1), "cm"),
+      # plot.background = element_rect(fill = "white"),
+      plot.title = element_text(hjust = 0.5),
+      axis.text = element_text(size = 10),
+      axis.title = element_text(size = 12),
+      axis.line = element_line(size = 0.5)) +
   xlim(0, 150) + ylim(2,10)
 
 confusionMatrix(pred, truth)
+```
+
+## Interesting Findings:
+
+In this analysis, the relationship between Alcohol by Volume (ABV) in beer produced by a state and the corresponding DUI arrest rate was examined. A correlation was calculated between the two variables and the results showed a negative correlation coefficient of -0.07, indicating that there is no positive relationship between the two variables. This suggests that producing beer with higher alcohol content does not necessarily result in an increase in DUI arrests.
+
+```{r interesting_findings_breaks, include=FALSE}
+
+# Define the breaks and colors for the DUI Arrest variable
+breaks = c(0, 100, 200, 300, 400, 500, 600, 700, 800)
+colors = c("#00FF00", "#7FFF00", "#D4FF00", "#FFFF00", "#FFD700", "#FFA500", "#FF7F50", "#FF4500", "#FF0000")
+```
+
+```{r corr_score}
+#Run a correllation score ABV and DUI Arrest Rate
+correlation <- cor(final$ABV, final$`DUI.Arrest.Rate..per.100K.`)
+cat("The correlation between ABV and DUI Arrest Per 100,000 People is", round(correlation, 2))
+
+```
+
+```{r graph_findings, echo =FALSE}
+# Create the variable that maps DUI Arrest to the color values
+merged_data_frame <-merge(x = beer_brew_whole, y = final, by = "State")
+merged_data_frame$color = cut(merged_data_frame$DUI.Arrest.Rate..per.100K., breaks = breaks, labels = colors[-1], include.lowest = TRUE)
+
+# Define the labels for each color group
+labels = c("0-100", "100-200", "200-300", "300-400", "400-500", "500-600", "600-700", "700-800")
+
+# Define the breaks for ABV variable
+abv_breaks= seq(0, 0.1, by = 0.01)
+
+abv_line <- geom_line(data = final, aes(x = geo_name, y = AVG, color = "AVG"), show.legend = TRUE)
+
+
+# Create line graph for ABV
+abv_line= geom_line(data = final, aes(x = geo_name, y = ABV * 3000, group = 1), color = "blue")
+
+# Plot the histogram with color-coded bars and custom legend labels
+ggplot(merged_data_frame, aes(x = geo_name, y = DUI.Arrest.Rate..per.100K., fill = color)) +
+  geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+  abv_line +
+  labs(x = "State", y = "DUI Arrest Rate per 100K / ABV") +
+  ggtitle("DUI Arrest Rate \nper 100K by State") +
+  scale_fill_manual(values = colors, labels = labels) +
+  scale_y_continuous(sec.axis = sec_axis(~.*10, name = "ABV", labels = NULL), expand = expand_scale(mult = c(0, 0.1))) +
+  theme_wsj() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        axis.title = element_text(size = 8),
+        plot.margin = unit(c(1, 1, 1, 2), "lines"),
+        plot.title = element_text(hjust = 0.5)) +
+  coord_cartesian(clip = 'off') +
+  geom_line(data = final, aes(x = geo_name, y = ABV, color = "ABV"), show.legend = TRUE, position = position_nudge(y = 0.005)) +
+  scale_color_manual(values = "blue", guide = "legend", name = "ABV")
 ```
