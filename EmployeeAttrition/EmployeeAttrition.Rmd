@@ -29,4 +29,22 @@ plot(pressure)
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
 
-```{r }
+
+# Actual stuff
+
+# Top 3 Factors to Predict Attrition - x
+
+
+# Sensitivity and Specificity of Attrition Prediction (>= 60% for each) - x
+
+# Attrition Prediction File - x
+
+# Monthly Income Linear Regression - x
+## MonthlyIncome = -3.16e3 + (1.998e2)Age + (6.93e-2)DailyRate + (3.08e2)YearsAtCompany
+
+# Monthly Income Prediction File - x
+
+# RShiny Link
+
+# YouTube Link
+
