@@ -1,50 +1,217 @@
 ---
-title: "EmployeeAttrition"
+title: "Employee Attrition and Monthly Income Analysis"
 author: "David Laurel"
 date: "`r Sys.Date()`"
 output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+
+library(ggplot2)
+library(caret)
+library(class)
+library(e1071) # NaiveBayes
+library(dplyr)
+library(tidyr)
+library(infotheo)
+library(Metrics)
+
+set.seed(9)
+# Load the data
+data = read.csv("./data/CaseStudy2-data.csv")
+data[data$Over18 == "Y",]
+employee_data = data
+employee_data$Attrition = as.factor(employee_data$Attrition)
 ```
 
-## R Markdown
+# Introduction
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+This report summarizes the findings of an analysis on employee attrition
+and monthly income prediction. The analysis focuses on the following
+topics:
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+-   How to deal with noisy data with unbalanced Attrition responses
+    -   Stratified Sampling
+-   Top 5 Factors to Predict Attrition
+-   Comparison of Models
+    -   KNN Model
+    -   Naive Bayes Model
+-   Predicting Monthly Income
+    -   Linear Regression Model
 
-```{r cars}
-summary(cars)
+# Stratified Sampling
+
+During the Exploratory Data Analysis phase of our investigation, we
+determined there were several issues with the noise of the provided
+dataset. There were far more employees which had not experienced
+Attrition than those who had. This fact grievously affected our
+sensitivity and specificity rates, and yielded poorer models overall.
+
+To deal with the unbalanced Attrition responses, we have used stratified
+sampling to create a more balanced dataset for model training. The
+stratified sampling ensures that we have a more equal representation of
+both "Yes" and "No" Attrition responses in our training data. This helps
+to improve the model's performance when dealing with an unbalanced
+dataset.
+
+```{r strat, echo= FALSE}
+employee_data <- employee_data %>% mutate(strata = ifelse(Attrition == "Yes", "Yes", "No"))
+
+sample_data <- employee_data %>% group_by(Attrition) %>%
+sample_n(size = 80)
+
+sample_data <- sample_data %>% select(-strata)
+
+ggplot(employee_data, aes(x = "", y = Attrition, fill = Attrition )) +
+  geom_col() +
+  coord_polar(theta="y") +
+  labs(title = "Unmodified Employee Data (n=870)", x="", y="")
+
+ggplot(sample_data, aes(x = "", y = Attrition, fill = Attrition )) +
+  geom_col() +
+  coord_polar(theta="y") +
+  labs(title = "Stratified Sample of Employee Data (n=160)", x="", y="")
+
 ```
 
-## Including Plots
+# Top 5 Factors to Predict Attrition
 
-You can also embed plots, for example:
+Although it was difficult to see visually, we were able to rely on an
+external package called Infotheo, which we used to perform a Mutual
+Information assessment on columns and their relationship with Attrition.
+This Mutual Information checks for shared sets, and compares the
+difference between joint distributions and marginal distributions for
+each column when compared with Attrition.
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+Based on this analysis, we were able to determine the first several
+factors were:
+
+-   MonthlyRate
+
+-   MonthlyIncome
+
+-   DailyRate
+
+-   HourlyRate
+
+-   Age
+
+-   TotalWorkingYears
+
+-   Overtime
+
+Since several of these broke into Pay Rates, we determined to label this
+group as Pay Rates, and consider our top 3 factors to determine
+Attrition:
+
+-   Monthly Income
+
+-   Pay Rate
+
+-   Age
+
+```{r factors}
+# create a training dataset and testing dataset
+trainIndex <- createDataPartition(employee_data$Attrition, p = 0.7, list = FALSE)
+training_set <- data[trainIndex, ]
+test_set <- data[-trainIndex, ]
+
+# calculate mutual information for each predictor variable
+mi <- apply(training_set[, -which(names(training_set) == "Attrition")], 2, function(x) infotheo::mutinformation(x, training_set$Attrition))
+
+# select the top three variables based on mutual information -- Top 3: MonthlyRate, MonthlyIncome, DailyRate
+top_three_vars <- names(sort(mi, decreasing = TRUE))
+top_three_vars[3:9]
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+# Attrition Predictive Models
 
+From here, we wanted to determine the accuracy, specificity and
+sensitivity for which we could predict an employee's likely Attrition.
+These factors would help determine our discrete predictions for future
+employees.
 
-# Actual stuff
+## K-Nearest Neighbors
 
-# Top 3 Factors to Predict Attrition - x
+For the K-Nearest Neighbors approach, we were able to achieve an
+accuracy of 64%, with a sensitivity of 64.5% and a specificity of 62.9%.
 
+```{r K}
+training_set <- sample_data 
+testing_set <- employee_data
 
-# Sensitivity and Specificity of Attrition Prediction (>= 60% for each) - x
+prediction_columns <- c("TotalWorkingYears", "DistanceFromHome",
+"StockOptionLevel", "NumCompaniesWorked", "YearsAtCompany",
+"YearsInCurrentRole", "JobSatisfaction", "TrainingTimesLastYear")
+prediction_formula <- as.formula("Attrition~.")
 
-# Attrition Prediction File - x
+k <- 5 
+predicted_attrition <- knn(training_set[, prediction_columns],
+testing_set[, prediction_columns], training_set$Attrition, k)
 
-# Monthly Income Linear Regression - x
-## MonthlyIncome = -3.16e3 + (1.998e2)Age + (6.93e-2)DailyRate + (3.08e2)YearsAtCompany
+confusionMatrix(predicted_attrition, testing_set$Attrition)
+```
 
-# Monthly Income Prediction File - x
+## Naïve-Bayes
 
-# RShiny Link
+Using a Naïve-Bayes approach, we were able to achieve an accuracy of
+63%, with a sensitivity of 60.1% and a specificity of 76.4%. However,
+since the K-Nearest Neighbors approach achieved a higher overall
+accuracy, we determined to primarily use this one for the remainder of
+our investigations.
 
-# YouTube Link
+```{r nb}
+nb_model <- naiveBayes(prediction_formula, data = training_set)
+predicted_attrition <- predict(nb_model, newdata = testing_set[,prediction_columns])
 
+# Evaluate the accuracy of the model
+
+confusionMatrix(predicted_attrition, testing_set$Attrition)
+```
+
+# Monthly Income Linear Regression
+
+Since Monthly Income was identified as a primary predictor for employee
+attrition, we wanted to determine if we could predict an employee's
+monthly income as a response to the various other data collected on the
+employee. Using a simple linear regression, we were able to achieve an
+Root Mean Square Error (RMSE) of \$3,911. This means that, on average,
+the predicted salaries by the model deviate from the actual salaries by
+approximately \$3,911.
+
+Although the top 3 factors associated with Monthly Income were Pay Rate
+and Age, we found better results from using alternative variables (Age,
+Daily Rate, Years At Company) in our model:
+
+$MonthlyIncome = {-3.16}e3 + (1.998e2)Age + (6.93e{-2})DailyRate + (3.08e2)YearsAtCompany$
+
+```{r minc}
+t.test(employee_data$MonthlyIncome)
+
+mi2 <- apply(employee_data[, -which(names(employee_data) =="MonthlyIncome")], 2, function(x) infotheo::mutinformation(x,employee_data$MonthlyIncome)) 
+
+top_vars <- names(sort(mi2, decreasing =TRUE))
+top_vars[3:9]
+
+trainIndex <-createDataPartition(employee_data$YearsAtCompany, p = 0.7, list = FALSE) 
+lm_train <- employee_data[trainIndex, ] 
+lm_test <-employee_data[-trainIndex, ]
+
+lm_model <- lm(MonthlyIncome ~ Age + DailyRate + YearsAtCompany, data = lm_train)
+
+predictions <- predict(lm_model, newdata = lm_test) 
+rmse <- rmse(predictions, lm_test$MonthlyIncome)
+rmse
+```
+
+# External Resources
+
+-   <a href="https://dhlaurel.shinyapps.io/EmployeeSalaryAttrition/">RShiny
+    App</a>
+-   Video Presentation

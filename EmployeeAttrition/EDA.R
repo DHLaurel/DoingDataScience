@@ -10,25 +10,7 @@ data = read.csv("./CaseStudy2-data.csv")
 data[data$Over18 == "Y",]
 employee_data = data
 employee_data$Attrition = as.factor(employee_data$Attrition)
-# employee_data$Education = as.factor(employee_data$Education)
-# employee_data$MaritalStatus = as.factor(employee_data$MaritalStatus)
-# employee_data$JobSatisfaction = as.factor(employee_data$JobSatisfaction)
-# employee_data$BusinessTravel = as.factor(employee_data$BusinessTravel)
-# employee_data$Department = as.factor(employee_data$Department)
-# employee_data$EducationField = as.factor(employee_data$EducationField)
-# employee_data$EnvironmentSatisfaction = as.factor(employee_data$EnvironmentSatisfaction)
-# employee_data$Gender = as.factor(employee_data$Gender)
-# employee_data$JobInvolvement = as.factor(employee_data$JobInvolvement)
-# employee_data$OverTime = as.factor(employee_data$OverTime)
-# employee_data$NumCompaniesWorked = as.factor(employee_data$NumCompaniesWorked)
-# employee_data$PerformanceRating = as.factor(employee_data$PerformanceRating)
-# employee_data$RelationshipSatisfaction = as.factor(employee_data$RelationshipSatisfaction)
-# employee_data$StandardHours = as.factor(employee_data$StandardHours)
-# employee_data$StockOptionLevel = as.factor(employee_data$StockOptionLevel)
-# employee_data$TrainingTimesLastYear = as.factor(employee_data$TrainingTimesLastYear)
-# employee_data$WorkLifeBalance = as.factor(employee_data$WorkLifeBalance)
-levels(employee_data$Attrition)
-levels(employee_data$MaritalStatus)
+
 
 # Single Greatest predictor -- MonthlyIncome
 ggplot(employee_data, aes(x = MonthlyIncome, fill = Attrition)) +
@@ -172,8 +154,7 @@ library(infotheo)
 formula <- as.formula("Attrition ~ .")
 
 # create a training dataset and testing dataset
-set.seed(123)
-trainIndex <- createDataPartition(data$Attrition, p = 0.7, list = FALSE)
+trainIndex <- createDataPartition(employee_data$Attrition, p = 0.7, list = FALSE)
 training_set <- data[trainIndex, ]
 test_set <- data[-trainIndex, ]
 
@@ -222,6 +203,10 @@ rmse <- rmse(predictions, lm_test$MonthlyIncome)
 # view the RMSE
 rmse
 
+ggplot(employee_data, aes(x = Age, y = MonthlyIncome)) +
+  geom_point() +
+  geom_abline(slope= 2.0, intercept = 0, col="cyan", se = TRUE)
+  # geom_smooth(method = "lm", se = FALSE, formula = y ~ 5 + x * 2.0 )
 
 ##-----------------##
 
