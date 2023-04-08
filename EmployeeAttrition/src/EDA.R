@@ -6,7 +6,7 @@ library(e1071) # NaiveBayes
 
 set.seed(9)
 
-data = read.csv("./CaseStudy2-data.csv")
+data = read.csv("../data/CaseStudy2-data.csv")
 data[data$Over18 == "Y",]
 employee_data = data
 employee_data$Attrition = as.factor(employee_data$Attrition)
@@ -213,7 +213,7 @@ ggplot(employee_data, aes(x = Age, y = MonthlyIncome)) +
 # Generate Prediction Files
 
 # Attrition Prediction
-attr_pred_dat = read.csv('./CaseStudy2CompSet No Attrition.csv')
+attr_pred_dat = read.csv('../data/CaseStudy2CompSet No Attrition.csv')
 pred_test_set <- attr_pred_dat
 predicted_attrition2 <- knn(training_set[, prediction_columns], 
                             pred_test_set[, prediction_columns], 
@@ -222,7 +222,7 @@ attr_pred_out = attr_pred_dat
 attr_pred_out$Attrition = predicted_attrition2
 
 
-inc_pred_dat = read.csv('./CaseStudy2CompSet No Salary.csv')
+inc_pred_dat = read.csv('../data/CaseStudy2CompSet No Salary.csv')
 pred_test_set <- inc_pred_dat
 predicted_inc <- predict(lm_model, pred_test_set)
 
@@ -234,8 +234,8 @@ ggplot(inc_pred_out, aes(x=Age, y=DailyRate)) +
   geom_smooth(method="lm")
 
 
-write.csv(attr_pred_out, file="./Case2PredictionsLaurel Attrition.csv", row.names = FALSE)
-write.csv(inc_pred_out, file="./Case2PredictionsLaurel Salary.csv", row.names = FALSE)
+write.csv(attr_pred_out, file="../data/Case2PredictionsLaurel Attrition.csv", row.names = FALSE)
+write.csv(inc_pred_out, file="../data/Case2PredictionsLaurel Salary.csv", row.names = FALSE)
 
 ##-----------------##
 

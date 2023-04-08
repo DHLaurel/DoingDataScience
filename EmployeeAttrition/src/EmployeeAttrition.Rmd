@@ -23,7 +23,7 @@ library(Metrics)
 
 set.seed(9)
 # Load the data
-data = read.csv("./data/CaseStudy2-data.csv")
+data = read.csv("../data/CaseStudy2-data.csv")
 data[data$Over18 == "Y",]
 employee_data = data
 employee_data$Attrition = as.factor(employee_data$Attrition)
